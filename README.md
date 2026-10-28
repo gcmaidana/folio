@@ -56,7 +56,8 @@ Two-stock comparison: click + Compare stock to reveal the secondary search. Sele
 YTD returns use the last available close from December of the previous calendar year, not the first January close. This baseline is used consistently in the headline, return chart, statistics, and YTD comparisons. If a prior year-end price is unavailable, YTD returns display unavailable instead of silently substituting a different period. The headline percentage follows the selected chart range; the separate Day change row shows movement versus the previous close. Non-YTD comparisons continue to rebase at the first shared observation.
 
 
-# Note
+# Issues I need to address
 
 Percentage is currently imperfect, for example will state daily percentage increase being 8.5% vs 7.9%. Currently iterating on this and still need to test more features!
 
+CSV export is rather imperfect. For ex, 5D chart exports to CSV exports more than 5 days. Also have to handle how to export all time CSV for companies that have existed for a long time.
