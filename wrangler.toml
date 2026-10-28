@@ -1,0 +1,6 @@
+name = "stock-market-api"
+main = "server/worker.mjs"
+compatibility_date = "2026-10-17"
+[vars]
+# Replace with your GitHub Pages origin (no repository path).
+ALLOWED_ORIGINS = "https://YOUR-USERNAME.github.io"
