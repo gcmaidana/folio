@@ -1,38 +1,6 @@
 # Stock analyzer
 
-A standalone React + Vite website. No ChatGPT account, Sites plugin, or OpenAI service is required to run or host this project. Nothing in this folder has been published.
-
-## Run locally
-
-Install Node.js 22.13 or newer, then run in this folder:
-
-```sh
-npm ci
-npm run dev
-```
-
-Open the URL printed by Vite (normally http://127.0.0.1:5173). The development server includes the market API proxy, so local use requires no API key or Cloudflare account.
-
-## Why there are two deployment pieces
-
-GitHub Pages hosts static HTML, CSS, and JavaScript; it cannot run the stock-data proxy. Yahoo's unofficial endpoint does not provide a supported cross-origin browser API. The frontend runs on GitHub Pages, and the supplied small Cloudflare Worker fetches search and price data. Both pieces are ordinary source code in this repository. A Cloudflare account is required only if you choose that API deployment. Its free tier is subject to current limits; Yahoo can independently rate limit or block requests.
-
-## Deploy when ready
-
-1. Create your own GitHub repository and upload this folder's source, including the hidden `.github` folder. Do not upload `node_modules` or `dist`.
-2. In `wrangler.toml`, replace `https://YOUR-USERNAME.github.io` with your Pages origin. For a custom domain, use that origin instead. Multiple origins can be comma-separated. Do not include the repository path.
-3. Run `npx wrangler login`, then `npm run deploy:api`. Copy the HTTPS Worker URL it returns. No Yahoo key is required.
-4. In GitHub, open Settings → Secrets and variables → Actions → Variables. Add `VITE_API_BASE_URL` with the Worker URL (without `/api` or a trailing slash). This is a public service URL, not a secret.
-5. In Settings → Pages, set Source to GitHub Actions. Push to `main`, or manually run the Deploy GitHub Pages workflow. If your default branch has another name, edit `.github/workflows/pages.yml`.
-6. The workflow runs tests, builds the site, and publishes `dist`. Relative asset paths support both username.github.io and username.github.io/repository/.
-
-For a manual production build, copy `.env.example` to `.env.local`, replace the Worker URL, and run `npm run build`. `npm run preview` previews that static build and uses the configured remote Worker; unlike `npm run dev`, it does not include a local API proxy. A missing API URL produces an explicit configuration message and a labeled S&P 500 historical snapshot, not fake live data. The GitHub workflow refuses to publish without the API URL.
-
-## Search behavior and coverage
-
-Search queries Yahoo's company and symbol search service dynamically. Results show company, ticker, exchange, and instrument type. Use arrow keys and Enter to select, or click a result. For international listings, select the exchange-qualified ticker shown by the provider. Exact ticker lookup remains available if search fails.
-
-The sidebar is only a shortcut list, never a whitelist. Chart requests accept international suffixes, numeric tickers, ampersands, and share-class punctuation. A failed exact lookup can resolve an unambiguous punctuation alias through provider search. Unknown tickers produce an error; we do not fabricate companies or price history. No provider covers literally every stock, exchange, or delisted security. Search coverage and historical availability depend on Yahoo, not the sidebar entries.
+A standalone React + Vite website. Made with Codex + Astra!
 
 ## Features
 
@@ -86,4 +54,9 @@ Two-stock comparison: click + Compare stock to reveal the secondary search. Sele
 
 
 YTD returns use the last available close from December of the previous calendar year, not the first January close. This baseline is used consistently in the headline, return chart, statistics, and YTD comparisons. If a prior year-end price is unavailable, YTD returns display unavailable instead of silently substituting a different period. The headline percentage follows the selected chart range; the separate Day change row shows movement versus the previous close. Non-YTD comparisons continue to rebase at the first shared observation.
+
+
+# Note
+
+Percentage is currently imperfect, for example will state daily percentage increase being 8.5% vs 7.9%. Currently iterating on this and still need to test more features!
 
