@@ -2,6 +2,10 @@
 
 A standalone React + Vite website. Made with Codex + Astra!
 
+[View the live site](https://folio.gcmaidana.com)
+
+![Folio dashboard showing Apple's one-year price chart, moving averages, market statistics, and technical indicators](docs/folio-screenshot.png)
+
 ## Features
 
 - S&P 500 landing chart; company/ticker search across provider listings
