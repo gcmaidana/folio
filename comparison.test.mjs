@@ -22,3 +22,13 @@ test('YTD comparisons use each previous year-end price rather than the first sha
  assert.ok(Math.abs(result.points[0].performance-10)<1e-8);
  assert.equal(comparePerformance(a,b,'1d',{range:'ytd'}),null);
 });
+
+
+test('daily comparison includes overnight gaps even when intraday prices rise',()=>{
+ const asset=[{date:'2026-10-30T14:00:00Z',close:98},{date:'2026-10-30T15:00:00Z',close:98.23}];
+ const benchmark=asset.map(c=>({...c,close:101}));
+ const result=comparePerformance(asset,benchmark,'5m',{range:'1d',assetBaseline:{date:'Previous session close',close:100},benchmarkBaseline:{date:'Previous session close',close:100}});
+ assert.ok(Math.abs(result.assetReturn+1.77)<1e-10);
+ assert.ok(Math.abs(result.benchmarkReturn-1)<1e-10);
+ assert.equal(comparePerformance(asset,benchmark,'5m',{range:'1d'}),null);
+});

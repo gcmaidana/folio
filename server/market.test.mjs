@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createApiHandler } from './market.mjs';
 
 const request = path => new Request(`https://folio.example${path}`);
-const chart = symbol => ({ chart: { result: [{ meta: { symbol, longName: 'Provider company', currency: 'INR' },
+const chart = symbol => ({ chart: { result: [{ meta: { symbol, longName: 'Provider company', currency: 'INR', previousClose: 10 },
   timestamp: [1700000000, 1700086400, 1700172800],
   indicators: { quote: [{ open: [null, 12, 1], high: [null, 14, 2], low: [null, 11, 1], close: [10, 13, null], volume: [null, 123, 999] }] } }] } });
 
@@ -140,4 +140,39 @@ test('YTD API returns last December close separately from visible January bars',
  }});
  const data=await (await handler(request('/api/market?symbol=TEST&range=ytd'))).json();
  assert.deepEqual(data.returnBaseline,{date:'2025-12-31',close:100});assert.equal(data.candles[0].date,'2026-01-02');
+});
+
+
+test('daily change includes overnight movement instead of the last intraday bar', async () => {
+ const handler=createApiHandler({fetchImpl:async()=>{
+  const payload=chart('^GSPC');const result=payload.chart.result[0];
+  result.meta={symbol:'^GSPC',regularMarketPrice:98.23,previousClose:100};
+  result.indicators.quote[0].close=[98.8,98.23,null];
+  return Response.json(payload);
+ }});
+ const data=await (await handler(request('/api/market?symbol=^GSPC&range=1d'))).json();
+ assert.ok(Math.abs(data.changePercent+1.77)<1e-10);
+ assert.equal(data.previousClose,100);
+ assert.equal(data.returnBaseline.close,100);
+});
+
+test('long-range daily change uses daily metadata, not a window baseline or monthly bar', async () => {
+ const handler=createApiHandler({fetchImpl:async url=>{
+  const payload=chart('TEST');const daily=new URL(url).searchParams.get('range')==='1d';
+  payload.chart.result[0].meta={symbol:'TEST',regularMarketPrice:98.23,chartPreviousClose:daily?100:50};
+  return Response.json(payload);
+ }});
+ const data=await (await handler(request('/api/market?symbol=TEST&range=max'))).json();
+ assert.equal(data.previousClose,100);
+ assert.ok(Math.abs(data.changePercent+1.77)<1e-10);
+});
+
+test('missing daily baseline stays unavailable rather than using an intraday bar', async () => {
+ const handler=createApiHandler({fetchImpl:async()=>{
+  const payload=chart('TEST');payload.chart.result[0].meta={symbol:'TEST'};
+  return Response.json(payload);
+ }});
+ const data=await (await handler(request('/api/market?symbol=TEST&range=1d'))).json();
+ assert.equal(data.previousClose,null);assert.equal(data.changePercent,null);
+ assert.equal(data.change,null);assert.equal(data.returnBaseline,null);
 });

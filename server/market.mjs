@@ -99,16 +99,28 @@ export function createApiHandler({ fetchImpl = globalThis.fetch, now = Date.now,
             returnBaseline=candidates.sort((a,b)=>a.date.localeCompare(b.date)).at(-1)||null;
           }catch{ /* Never substitute the first January close for a missing year-end baseline. */ }
         }
-        const price = finite(meta.regularMarketPrice) ? meta.regularMarketPrice : candles.at(-1).close;
-        const previousClose = finite(meta.regularMarketChangePercent) && meta.regularMarketChangePercent !== -100
-          ? price / (1 + meta.regularMarketChangePercent / 100)
-          : finite(meta.previousClose) ? meta.previousClose : candles.at(-2)?.close ?? price;
-        const marketDate = new Date(meta.regularMarketTime * 1000);
+        // Long-range chartPreviousClose can refer to the start of the window,
+        // not the previous trading session. Resolve daily metadata when needed.
+        let dailyMeta = meta;
+        if (range !== '1d' && !finite(meta.previousClose) && !finite(meta.regularMarketChangePercent)) {
+          try { dailyMeta = (await chart(resolvedSymbol, '1d')).meta || {}; }
+          catch { dailyMeta = {}; }
+        }
+        const price = finite(dailyMeta.regularMarketPrice) ? dailyMeta.regularMarketPrice
+          : finite(meta.regularMarketPrice) ? meta.regularMarketPrice : candles.at(-1).close;
+        const previousClose = finite(dailyMeta.previousClose) && dailyMeta.previousClose > 0 ? dailyMeta.previousClose
+          : finite(dailyMeta.regularMarketChangePercent) && dailyMeta.regularMarketChangePercent > -100
+            ? price / (1 + dailyMeta.regularMarketChangePercent / 100)
+            : (range === '1d' || dailyMeta !== meta) && finite(dailyMeta.chartPreviousClose) && dailyMeta.chartPreviousClose > 0
+              ? dailyMeta.chartPreviousClose : null;
+        if (range === '1d' && previousClose !== null) returnBaseline = { date: 'Previous session close', close: previousClose };
+        const marketTime = dailyMeta.regularMarketTime ?? meta.regularMarketTime;
+        const marketDate = new Date(marketTime * 1000);
         body = { symbol: resolvedSymbol, name: meta.longName || meta.shortName || resolvedSymbol,
           currency: meta.currency || 'USD', exchange: meta.fullExchangeName || meta.exchangeName || '',
           instrumentType: meta.instrumentType || 'EQUITY', price, previousClose,
-          change: price - previousClose, changePercent: previousClose ? (price / previousClose - 1) * 100 : 0,
-          marketTime: finite(meta.regularMarketTime) && finite(marketDate.getTime()) ? marketDate.toISOString() : null,
+          change: previousClose === null ? null : price - previousClose, changePercent: previousClose === null ? null : (price / previousClose - 1) * 100,
+          marketTime: finite(marketTime) && finite(marketDate.getTime()) ? marketDate.toISOString() : null,
           fiftyTwoWeekHigh: finite(meta.fiftyTwoWeekHigh) ? meta.fiftyTwoWeekHigh : null,
           fiftyTwoWeekLow: finite(meta.fiftyTwoWeekLow) ? meta.fiftyTwoWeekLow : null,
           source: 'Yahoo Finance (unofficial)', sourceUrl: `https://finance.yahoo.com/quote/${encodeURIComponent(resolvedSymbol)}/history/`,
