@@ -3,6 +3,45 @@ import assert from 'node:assert/strict';
 import { createApiHandler } from './market.mjs';
 
 const request = path => new Request(`https://folio.example${path}`);
+
+test('5D excludes older sessions and indicator warmup from the visible series',async()=>{
+ const days=['2026-10-21','2026-10-22','2026-10-23','2026-10-26','2026-10-27','2026-10-28'];
+ const h=createApiHandler({fetchImpl:async url=>{
+  if(new URL(url).searchParams.has('period1'))return Response.json({chart:{result:[{timestamp:[Date.parse('2026-10-20T14:00:00Z')/1000],indicators:{quote:[{close:[99]}]}}]}});
+  return Response.json({chart:{result:[{meta:{symbol:'TEST',previousClose:100,exchangeTimezoneName:'America/New_York'},timestamp:days.flatMap(day=>[Date.parse(day+'T14:00:00Z')/1000,Date.parse(day+'T15:00:00Z')/1000]),indicators:{quote:[{close:Array(12).fill(101)}]}}]}});
+ }});
+ const body=await (await h(request('/api/market?symbol=TEST&range=5d&warmup=1'))).json();
+ assert.equal(body.candles.length,10);assert.equal(body.candles[0].date,'2026-10-22T14:00:00.000Z');
+ assert.equal(new Set(body.candles.map(c=>c.date.slice(0,10))).size,5);
+ assert.equal(body.indicatorHistory.length,1);
+});
+
+test('MAX daily export starts at provider first trade even before 1970 and keeps a separate cache',async()=>{
+ const first=Date.parse('1962-01-02T14:30:00Z')/1000;let dailyCalls=0,monthlyCalls=0;
+ const h=createApiHandler({fetchImpl:async url=>{
+  const u=new URL(url),interval=u.searchParams.get('interval');
+  if(u.searchParams.has('period1')){
+   assert.equal(Number(u.searchParams.get('period1')),first);
+   if(interval==='1d')dailyCalls++;else monthlyCalls++;
+  }
+  return Response.json({chart:{result:[{meta:{symbol:'IBM',firstTradeDate:first,previousClose:99,dataGranularity:interval},timestamp:[first,first+86400],indicators:{quote:[{close:[100,102]}]}}]}});
+ }});
+ await h(request('/api/market?symbol=IBM&range=max'));
+ const body=await (await h(request('/api/export?symbol=IBM'))).json();
+ assert.equal(body.interval,'1d');assert.equal(body.candles[0].date,'1962-01-02');assert.equal(body.candles.length,2);
+ await h(request('/api/export?symbol=IBM'));assert.equal(dailyCalls,1);assert.equal(monthlyCalls,1);
+ assert.equal((await h(request('/api/export?symbol=IBM&range=5d'))).status,400);
+});
+
+test('failed or downsampled MAX export never substitutes monthly candles',async()=>{
+ for(const failure of ['rate-limit','monthly']){
+  const h=createApiHandler({fetchImpl:async url=>{
+   if(new URL(url).searchParams.has('period1')&&failure==='rate-limit')return new Response('',{status:429});
+   const p=chart('TEST');p.chart.result[0].meta.dataGranularity='1mo';return Response.json(p);
+  }});
+  assert.equal((await h(request('/api/export?symbol=TEST'))).status,failure==='rate-limit'?429:503);
+ }
+});
 const chart = symbol => ({ chart: { result: [{ meta: { symbol, longName: 'Provider company', currency: 'INR', previousClose: 10 },
   timestamp: [1700000000, 1700086400, 1700172800],
   indicators: { quote: [{ open: [null, 12, 1], high: [null, 14, 2], low: [null, 11, 1], close: [10, 13, null], volume: [null, 123, 999] }] } }] } });
@@ -95,7 +134,7 @@ test('unknown symbols and empty searches do not invent results', async () => {
 test('each chart range requests the matching provider interval and preserves intraday timestamps', async () => {
  const expected={'1d':'5m','5d':'15m','1mo':'1d','6mo':'1d','ytd':'1d','1y':'1d','5y':'1d','max':'1mo'};
  for(const [range,interval] of Object.entries(expected)){
-  const handler=createApiHandler({fetchImpl:async url=>{const u=new URL(url);if(range==='max'){assert.equal(u.searchParams.get('period1'),'0');assert.ok(Number(u.searchParams.get('period2'))>0)}else assert.equal(u.searchParams.get('range'),range);assert.equal(u.searchParams.get('interval'),interval);return Response.json(chart('TEST'));}});
+  const handler=createApiHandler({fetchImpl:async url=>{const u=new URL(url);if(range==='max'&&u.searchParams.get('range')==='1d')return Response.json(chart('TEST'));if(range==='max'){assert.equal(u.searchParams.get('period1'),'-2208988800');assert.ok(Number(u.searchParams.get('period2'))>0)}else assert.equal(u.searchParams.get('range'),range);assert.equal(u.searchParams.get('interval'),interval);return Response.json(chart('TEST'));}});
   const r=await handler(new Request(`https://example.com/api/market?symbol=TEST&range=${range}`));
   assert.equal(r.status,200);const data=await r.json();assert.equal(data.interval,interval);
   assert.equal(data.candles[0].date.includes('T'),range==='1d'||range==='5d');

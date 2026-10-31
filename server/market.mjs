@@ -1,3 +1,4 @@
+import { normalizeHistory } from './history.mjs';
 import { parseFundamentals } from './fundamentals.mjs';
 export const rangeIntervals = { '1d':'5m', '5d':'15m', '1mo':'1d', '6mo':'1d', 'ytd':'1d', '1y':'1d', '5y':'1d', 'max':'1mo' };
 const ranges = new Set(Object.keys(rangeIntervals));
@@ -25,25 +26,31 @@ export function createApiHandler({ fetchImpl = globalThis.fetch, now = Date.now,
       exchange: item.exchDisp || item.exchange || '', type: item.quoteType || item.typeDisp || 'UNKNOWN',
     })).sort((a,b)=>Number(b.symbol===query.toUpperCase())-Number(a.symbol===query.toUpperCase()) || Number(b.type==='EQUITY')-Number(a.type==='EQUITY'));
   }
-  async function chart(symbol, range) {
-    const window = range === 'max' ? `period1=0&period2=${Math.floor(now()/1000)}` : `range=${range}`;
-    const data = await provider(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${rangeIntervals[range]}&${window}`);
+  async function chart(symbol, range, interval = rangeIntervals[range]) {
+    let start = 0;
+    if (range === 'max') {
+      const recent = await chart(symbol, '1d');
+      start = finite(recent.meta?.firstTradeDate) ? Math.floor(recent.meta.firstTradeDate) : -2208988800;
+    }
+    const window = range === 'max' ? `period1=${start}&period2=${Math.floor(now()/1000)}` : `range=${range}`;
+    const data = await provider(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&${window}`);
     if (data.chart?.error || !data.chart?.result?.[0]) throw Object.assign(new Error('Symbol unavailable'), { status: 404 });
     return data.chart.result[0];
   }
   return async function handle(request) {
     const url = new URL(request.url);
-    if (!['/api/search', '/api/market', '/api/fundamentals'].includes(url.pathname)) return json({ error: 'API route not found.' }, 404);
+    if (!['/api/search', '/api/market', '/api/fundamentals', '/api/export'].includes(url.pathname)) return json({ error: 'API route not found.' }, 404);
     if (request.method !== 'GET') return json({ error: 'Use GET for market data requests.' }, 405);
     const isSearch = url.pathname === '/api/search';
+    const isExport = url.pathname === '/api/export';
     const isFundamentals = url.pathname === '/api/fundamentals';
     const query = (url.searchParams.get('q') || '').trim().replace(/^\$+/, '').trim();
     const symbol = (url.searchParams.get('symbol') || '^GSPC').trim().replace(/^\$+/, '').trim().toUpperCase();
-    const range = url.searchParams.get('range') || '1y';
-    if (isSearch ? (!query || query.length > 100 || /[\x00-\x1f\x7f]/.test(query)) : (!validSymbol(symbol) || !ranges.has(range))) {
+    const range = url.searchParams.get('range') || (isExport ? 'max' : '1y');
+    if (isSearch ? (!query || query.length > 100 || /[\x00-\x1f\x7f]/.test(query)) : (!validSymbol(symbol) || !ranges.has(range) || (isExport && range !== 'max'))) {
       return json({ error: isSearch ? 'Enter a company name or ticker (up to 100 characters).' : 'Enter a valid ticker and supported chart range.' }, 400);
     }
-    const key = isFundamentals ? `fundamentals:${symbol}` : isSearch ? `search:${query.toLowerCase()}` : `market:${symbol}:${range}:${url.searchParams.get("warmup")=== "1"}`;
+    const key = isExport ? `export:${symbol}:max:1d` : isFundamentals ? `fundamentals:${symbol}` : isSearch ? `search:${query.toLowerCase()}` : `market:${symbol}:${range}:${url.searchParams.get("warmup")=== "1"}`;
     const cached = cache.get(key);
     if (cached && cached.expires > now()) return json(cached.body);
     try {
@@ -55,7 +62,8 @@ export function createApiHandler({ fetchImpl = globalThis.fetch, now = Date.now,
       else if (isSearch) body = { results: await search(query) };
       else {
         let result;
-        try { result = await chart(symbol, range); }
+        const interval = isExport ? '1d' : rangeIntervals[range];
+        try { result = await chart(symbol, range, interval); }
         catch (error) {
           if (error.status !== 404) throw error;
           // Resolve provider-supported punctuation aliases only after direct lookup fails.
@@ -63,35 +71,30 @@ export function createApiHandler({ fetchImpl = globalThis.fetch, now = Date.now,
           const normalized = symbol.replace(/[.-]/g, '');
           const matches = (await search(symbol)).filter(item => item.symbol !== symbol && item.symbol.replace(/[.-]/g, '') === normalized);
           if (matches.length !== 1) throw error;
-          result = await chart(matches[0].symbol, range);
+          result = await chart(matches[0].symbol, range, interval);
         }
-        const quote = result.indicators?.quote?.[0];
-        const candles = (result.timestamp || []).flatMap((timestamp, index) => {
-          const close = quote?.close?.[index];
-          if (!finite(close) || !finite(timestamp)) return [];
-          const date = new Date(timestamp * 1000);
-          if (!finite(date.getTime())) return [];
-          // Some indexes/funds report close only; keep the valid observation.
-          return [{ date: ['1d','5d'].includes(range) ? date.toISOString() : date.toISOString().slice(0, 10), open: finite(quote?.open?.[index]) ? quote.open[index] : null,
-            high: finite(quote?.high?.[index]) ? quote.high[index] : null,
-            low: finite(quote?.low?.[index]) ? quote.low[index] : null,
-            close, volume: finite(quote?.volume?.[index]) ? quote.volume[index] : null }];
-        });
+        const candles = normalizeHistory(result, range, interval);
         if (!candles.length) return json({ error: `No chart history is available for ${symbol} in this range.` }, 404);
         const meta = result.meta || {};
         const resolvedSymbol = meta.symbol || symbol;
+        if (isExport) {
+          // Do not return a monthly chart or saved snapshot when full daily retrieval fails.
+          if (meta.dataGranularity && meta.dataGranularity !== '1d') throw new Error('Daily history unavailable');
+          body = {symbol:resolvedSymbol, currency:meta.currency || 'USD', interval, range,
+            exchangeTimezoneName:meta.exchangeTimezoneName || 'UTC', candles, isSnapshot:false,
+            fetchedAt:new Date(now()).toISOString()};
+          if (cache.size >= 300) cache.delete(cache.keys().next().value);
+          cache.set(key, {body, expires:now()+cacheTtlMs});
+          return json(body);
+        }
         let indicatorHistory = []; let indicatorHistoryUnavailable = false;
         if(url.searchParams.get('warmup')==='1' && range!=='max'){
           try {
-            const first=result.timestamp[0];
+            const first=['1d','5d'].includes(range)?Date.parse(candles[0].date)/1000:result.timestamp[0];
             const days=['1d','5d'].includes(range)?30:400;
             const history=await provider(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(resolvedSymbol)}?interval=${rangeIntervals[range]}&period1=${Math.max(0,first-days*86400)}&period2=${first}`);
             const h=history.chart?.result?.[0];if(!h)throw Error('History unavailable');
-            indicatorHistory=(h.timestamp||[]).flatMap((t,i)=>{
-              const close=h.indicators?.quote?.[0]?.close?.[i];
-              const date=['1d','5d'].includes(range)?new Date(t*1000).toISOString():new Date(t*1000).toISOString().slice(0,10);
-              return finite(close)&&date<candles[0].date?[{date,close}]:[];
-            }).slice(-199);
+            indicatorHistory=normalizeHistory(h, 'warmup', rangeIntervals[range]).filter(c=>c.date<candles[0].date).map(({date,close})=>({date,close})).slice(-199);
           }catch{indicatorHistoryUnavailable=true;}
         }
         let returnBaseline = null;
