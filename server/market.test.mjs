@@ -176,3 +176,40 @@ test('missing daily baseline stays unavailable rather than using an intraday bar
  assert.equal(data.previousClose,null);assert.equal(data.changePercent,null);
  assert.equal(data.change,null);assert.equal(data.returnBaseline,null);
 });
+
+
+const summaryPage = (symbol, detail = {}, stats = {}) => '<script type="application/json" data-sveltekit-fetched data-url="https://query1.finance.yahoo.com/v10/finance/quoteSummary/'+encodeURIComponent(symbol)+'">'+JSON.stringify({status:200,body:JSON.stringify({quoteSummary:{result:[{price:{symbol,marketCap:{raw:682110000000}},summaryDetail:detail,defaultKeyStatistics:stats}]}})})+'</script>';
+
+test('company statistics normalize raw values, preserve yield units and cache independently', async()=>{
+ let calls=0;
+ const handler=createApiHandler({fetchImpl:async url=>{
+  calls++;assert.equal(url,'https://finance.yahoo.com/quote/TEST/');
+  return new Response(summaryPage('TEST',{trailingPE:{raw:25.4},dividendYield:{raw:0.012},open:{raw:761.26},dayHigh:{raw:761.46},dayLow:{raw:750.37}},{lastDividendValue:{raw:0.27}}));
+ }});
+ const body=await (await handler(request('/api/fundamentals?symbol=TEST'))).json();
+ assert.equal(body.marketCap,682110000000);assert.equal(body.trailingPE,25.4);
+ assert.equal(body.dividendYield,0.012);assert.equal(body.lastDividendValue,0.27);
+ assert.equal(body.open,761.26);assert.equal(body.dayHigh,761.46);assert.equal(body.dayLow,750.37);
+ assert.equal(body.averageVolume,null);
+ await handler(request('/api/fundamentals?symbol=TEST'));assert.equal(calls,1);
+});
+
+test('missing fundamentals stay null and mismatched or malformed pages fail safely',async()=>{
+ for(const page of [summaryPage('OTHER'),'<html>Unavailable</html>']){
+  const h=createApiHandler({fetchImpl:async()=>new Response(page)});
+  assert.equal((await h(request('/api/fundamentals?symbol=TEST'))).status,503);
+ }
+ const h=createApiHandler({fetchImpl:async()=>new Response(summaryPage('TEST',{dividendYield:{raw:0},trailingPE:{fmt:'N/A'}}))});
+ const body=await (await h(request('/api/fundamentals?symbol=TEST'))).json();
+ assert.equal(body.dividendYield,0);assert.equal(body.trailingPE,null);assert.equal(body.lastDividendValue,null);
+});
+
+test('snapshot daily high low and volume come from session metadata, not the last bar',async()=>{
+ const h=createApiHandler({fetchImpl:async()=>{
+  const p=chart('TEST');Object.assign(p.chart.result[0].meta,{regularMarketOpen:11,regularMarketDayHigh:16,regularMarketDayLow:8,regularMarketVolume:10000});return Response.json(p);
+ }});
+ for(const range of ['1d','max']){
+  const b=await (await h(request('/api/market?symbol=TEST&range='+range))).json();
+  assert.equal(b.open,11);assert.equal(b.dayHigh,16);assert.equal(b.dayLow,8);assert.equal(b.dayVolume,10000);
+ }
+});

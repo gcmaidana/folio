@@ -61,3 +61,6 @@ YTD returns use the last available close from December of the previous calendar 
 Percentage is currently imperfect, for example will state daily percentage increase being 8.5% vs 7.9%. Currently iterating on this and still need to test more features!
 
 CSV export is rather imperfect. For ex, 5D chart exports to CSV exports more than 5 days. Also have to handle how to export all time CSV for companies that have existed for a long time.
+
+
+Market snapshot statistics: `/api/fundamentals` reads structured JSON embedded in Yahoo Finance’s public quote page and caches it independently of chart history. The snapshot includes market capitalization, trailing P/E, forward annual dividend yield, latest reported dividend per share, and explicit 52-week high/low values. Dividend yield is stored as a fraction; the latest dividend is an actual payment, not an assumed annual rate divided by four. Missing statistics display a dash, and unavailable quote pages do not prevent charts from loading. Daily high, low, and volume use session metadata instead of the final intraday bar. Both the frontend and API worker must be deployed for these additions.

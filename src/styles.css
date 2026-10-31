@@ -12,3 +12,5 @@
 .comparison-chip{display:inline-flex;align-items:center;gap:8px;border:1px solid #514b70;background:#242232;border-radius:20px;padding:7px 10px;font-size:11px}.comparison-picker{display:flex;gap:10px;align-items:center;margin-top:12px;max-width:410px}.comparison-picker .searchbox{margin-left:0;flex:1;min-width:0;width:auto}.comparison-picker .search-results{left:0;right:auto;width:min(350px,calc(100vw - 70px))}.comparison-picker .searchbox input{font-size:12px}
 
 .return-range-label{color:var(--muted);font-size:10px;margin-left:7px;white-space:nowrap}
+
+.snapshot-data-note{grid-column:1/-1;color:var(--muted);font-size:10px;line-height:1.6;margin:14px 0 0}.dashboard{align-items:start}

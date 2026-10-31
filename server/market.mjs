@@ -1,3 +1,4 @@
+import { parseFundamentals } from './fundamentals.mjs';
 export const rangeIntervals = { '1d':'5m', '5d':'15m', '1mo':'1d', '6mo':'1d', 'ytd':'1d', '1y':'1d', '5y':'1d', 'max':'1mo' };
 const ranges = new Set(Object.keys(rangeIntervals));
 const validSymbol = value => /^[A-Z0-9^][A-Z0-9.&^=\-]{0,39}$/.test(value);
@@ -7,13 +8,13 @@ const json = (body, status = 200) => Response.json(body, { status, headers: stat
 /** A portable Web Request/Response handler shared by local Node and edge hosting. */
 export function createApiHandler({ fetchImpl = globalThis.fetch, now = Date.now, timeoutMs = 12000, cacheTtlMs = 60000 } = {}) {
   const cache = new Map();
-  async function provider(url) {
+  async function provider(url, asText = false) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetchImpl(url, { signal: controller.signal, headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 StockAnalyzer/2.0' } });
+      const response = await fetchImpl(url, { signal: controller.signal, headers: asText ? { Accept: 'text/html' } : { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 StockAnalyzer/2.0' } });
       if (!response.ok) throw Object.assign(new Error('Provider request failed'), { status: response.status });
-      return await response.json();
+      return asText ? await response.text() : await response.json();
     } finally { clearTimeout(timer); }
   }
   async function search(query) {
@@ -32,21 +33,26 @@ export function createApiHandler({ fetchImpl = globalThis.fetch, now = Date.now,
   }
   return async function handle(request) {
     const url = new URL(request.url);
-    if (!['/api/search', '/api/market'].includes(url.pathname)) return json({ error: 'API route not found.' }, 404);
+    if (!['/api/search', '/api/market', '/api/fundamentals'].includes(url.pathname)) return json({ error: 'API route not found.' }, 404);
     if (request.method !== 'GET') return json({ error: 'Use GET for market data requests.' }, 405);
     const isSearch = url.pathname === '/api/search';
+    const isFundamentals = url.pathname === '/api/fundamentals';
     const query = (url.searchParams.get('q') || '').trim().replace(/^\$+/, '').trim();
     const symbol = (url.searchParams.get('symbol') || '^GSPC').trim().replace(/^\$+/, '').trim().toUpperCase();
     const range = url.searchParams.get('range') || '1y';
     if (isSearch ? (!query || query.length > 100 || /[\x00-\x1f\x7f]/.test(query)) : (!validSymbol(symbol) || !ranges.has(range))) {
       return json({ error: isSearch ? 'Enter a company name or ticker (up to 100 characters).' : 'Enter a valid ticker and supported chart range.' }, 400);
     }
-    const key = isSearch ? `search:${query.toLowerCase()}` : `market:${symbol}:${range}:${url.searchParams.get("warmup")=== "1"}`;
+    const key = isFundamentals ? `fundamentals:${symbol}` : isSearch ? `search:${query.toLowerCase()}` : `market:${symbol}:${range}:${url.searchParams.get("warmup")=== "1"}`;
     const cached = cache.get(key);
     if (cached && cached.expires > now()) return json(cached.body);
     try {
       let body;
-      if (isSearch) body = { results: await search(query) };
+      if (isFundamentals) {
+        const html = await provider(`https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`, true);
+        body = {...parseFundamentals(html, symbol), fetchedAt: new Date(now()).toISOString()};
+      }
+      else if (isSearch) body = { results: await search(query) };
       else {
         let result;
         try { result = await chart(symbol, range); }
@@ -119,6 +125,10 @@ export function createApiHandler({ fetchImpl = globalThis.fetch, now = Date.now,
         body = { symbol: resolvedSymbol, name: meta.longName || meta.shortName || resolvedSymbol,
           currency: meta.currency || 'USD', exchange: meta.fullExchangeName || meta.exchangeName || '',
           instrumentType: meta.instrumentType || 'EQUITY', price, previousClose,
+          open: finite(meta.regularMarketOpen) ? meta.regularMarketOpen : range === '1d' ? candles[0].open : rangeIntervals[range] === '1d' ? candles.at(-1).open : null,
+          dayHigh: finite(meta.regularMarketDayHigh) ? meta.regularMarketDayHigh : null,
+          dayLow: finite(meta.regularMarketDayLow) ? meta.regularMarketDayLow : null,
+          dayVolume: finite(meta.regularMarketVolume) ? meta.regularMarketVolume : null,
           change: previousClose === null ? null : price - previousClose, changePercent: previousClose === null ? null : (price / previousClose - 1) * 100,
           marketTime: finite(marketTime) && finite(marketDate.getTime()) ? marketDate.toISOString() : null,
           fiftyTwoWeekHigh: finite(meta.fiftyTwoWeekHigh) ? meta.fiftyTwoWeekHigh : null,
