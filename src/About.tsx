@@ -8,6 +8,7 @@ export default function About(){
    <p>Folio is a stock analysis project created with GPT-6 Astra through Codex. I directed AI agents through prompts and feedback to turn a product idea into a working application.</p>
    <p>The purpose of this project is to demonstrate practical AI skills: defining requirements, evaluating generated work, identifying problems, and guiding improvements. The agents wrote the code; I set the direction and reviewed the results.</p>
    <a className="pill" href="https://github.com/gcmaidana/folio" target="_blank" rel="noreferrer">Explore the source on GitHub <ArrowUpRight size={15}/></a>
+   <p><a className="pill" href="https://github.com/gcmaidana/folio/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Read the iteration log <ArrowUpRight size={15}/></a></p>
   </div>
   <div className="about-grid">
    <section><h3>My role</h3><ul>

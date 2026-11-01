@@ -19,6 +19,6 @@
 
 .csv-help,.csv-status{font-size:10px;color:var(--muted);line-height:1.6;margin:10px 0 0}.csv-status:empty{display:none}
 
-.company-logo{position:relative;flex-shrink:0;overflow:hidden}.company-logo-fallback{display:grid;place-items:center;width:100%;height:100%}.company-logo img{position:absolute;inset:0;width:100%;height:100%;padding:5px;object-fit:contain;background:#fff;opacity:0}.company-logo.has-logo img{opacity:1}.company-logo.has-logo .company-logo-fallback{visibility:hidden}
+.company-logo{position:relative;flex-shrink:0;overflow:hidden}.company-logo-fallback{display:grid;place-items:center;width:100%;height:100%}.company-logo img{position:absolute;inset:0;width:100%;height:100%;padding:0;object-fit:contain;border-radius:inherit;background:#fff;opacity:0}.company-logo.has-logo{border-color:transparent;background:#fff}.company-logo.has-logo.logo-dark{background:#242a2c}.company-logo.has-logo img{opacity:1}.company-logo.has-logo .company-logo-fallback{visibility:hidden}
 
 .company-logo.logo-dark img{background:#242a2c}

@@ -4,6 +4,10 @@ A standalone React + Vite website. Made with Codex + Astra!
 
 [View the live site](https://folio.gcmaidana.com)
 
+## How the project evolved
+
+I directed AI agents through feature specifications, review, debugging, and visual iteration. The [iteration log](CHANGELOG.md) records the problems I identified, the resulting changes, and how they were checked—including daily-return accuracy, full-history exports, deployment fixes, and logo polish.
+
 ![Folio dashboard showing Apple's one-year price chart, moving averages, market statistics, and technical indicators](docs/folio-screenshot.png)
 
 ## Features
