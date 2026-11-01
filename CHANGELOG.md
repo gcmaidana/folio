@@ -6,6 +6,12 @@ Entries are newest first. Dates use America/Chicago. Earlier entries were recons
 
 ## October 31, 2026
 
+### Added Folio’s soft F favicon
+
+- **Feedback:** Replace the default browser icon with a simple, modern mark without sharp corners. Selected the soft F after reviewing two rounds of concepts.
+- **Change:** Added a lime favicon with a rounded charcoal F and changed the browser title to “Folio · Stock Analysis.” The vector icon stays crisp at different sizes.
+- **Validation:** Reviewed the selected design at 16 and 32 pixels in light and dark tab mockups; production build passed and includes the favicon asset.
+
 ### Refined the logo tiles
 
 - **Feedback:** Square logo backgrounds looked like smaller boxes inside rounded holders.
