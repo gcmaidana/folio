@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApiHandler } from './market.mjs';
+import { parseCompanyLogo } from './fundamentals.mjs';
+
+const logoPage = quotes => '<script type="application/json" data-sveltekit-fetched>'+JSON.stringify({status:200,body:JSON.stringify({quoteResponse:{result:quotes}})})+'</script>';
+test('logos use the exact company and prefer Yahoo dark-theme assets',()=>{
+ const html=logoPage([{symbol:'OTHER',logoUrl:'https://s.yimg.com/other.png'},{symbol:'AAPL',logoUrlDarkMode:'https://s.yimg.com/apple-dark.png',companyLogoUrl:'https://s.yimg.com/apple.png'}]);
+ assert.deepEqual(parseCompanyLogo(html,'AAPL'),{logoUrl:'https://s.yimg.com/apple-dark.png',logoTheme:'dark'});
+ assert.deepEqual(parseCompanyLogo(html,'MISSING'),{logoUrl:null,logoTheme:null});
+ assert.deepEqual(parseCompanyLogo(logoPage([{symbol:'AAPL',companyLogoUrl:'https://s.yimg.com/apple.png'}]),'AAPL'),{logoUrl:'https://s.yimg.com/apple.png',logoTheme:'light'});
+});
+test('invalid logo sources and missing metadata preserve the initials fallback',()=>{
+ for(const url of ['javascript:alert(1)','https://s.yimg.com.evil.example/a.png','http://s.yimg.com/a.png','https://user:secret@s.yimg.com/a.png']){
+  assert.equal(parseCompanyLogo(logoPage([{symbol:'AAPL',logoUrl:url}]),'AAPL').logoUrl,null);
+ }
+ assert.equal(parseCompanyLogo('<html>Unavailable</html>','AAPL').logoUrl,null);
+});
 
 const request = path => new Request(`https://folio.example${path}`);
 
